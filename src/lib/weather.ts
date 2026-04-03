@@ -36,9 +36,9 @@ export async function fetchWeather(
       "soil_moisture_0_to_1cm",
       "cloud_cover",
     ].join(","),
-    daily: "temperature_2m_min",
+    daily: "temperature_2m_min,temperature_2m_mean",
     forecast_days: "5",
-    past_days: "2",
+    past_days: "7",
     timezone: "auto",
   });
 
@@ -64,6 +64,7 @@ export async function fetchWeather(
   const result: WeatherResponse = {
     hourly,
     dailyMinTemps: json.daily.temperature_2m_min,
+    dailyMeanTemps: json.daily.temperature_2m_mean,
     dailyDates: json.daily.time,
   };
 

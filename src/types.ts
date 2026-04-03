@@ -18,10 +18,11 @@ export interface HourlyWeather {
 export interface WeatherResponse {
   hourly: HourlyWeather[];
   dailyMinTemps: number[];
+  dailyMeanTemps: number[];
   dailyDates: string[];
 }
 
-export type Season = "spring" | "summer";
+export type ThermalRegime = "spring" | "summer";
 
 export interface FactorScore {
   name: string;
@@ -36,8 +37,9 @@ export interface DailyScore {
   score: number;
   label: ScoreLabel;
   factors: FactorScore[];
-  season: Season;
+  regime: ThermalRegime;
   flightWindow: string;
+  tStar: number;
 }
 
 export type ScoreLabel =

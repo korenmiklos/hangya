@@ -1,36 +1,37 @@
-# Hangya Ant Flight Scoring Model
+# Hangya Ant Flight Scoring Model (v2)
 
 ## Overview
 
-The model predicts the probability of ant nuptial flights for a given location and day. It scores 7 weather factors on a 0--1 scale, then combines them into a single 0--100 score using a weighted geometric mean. The geometric mean ensures that any single poor condition (e.g., heavy rain) has an outsized negative effect on the overall score.
+The model predicts the probability of ant nuptial flights for a given location and day. It scores 9 weather factors on a 0--1 scale, then combines them via a weighted geometric mean. The geometric mean ensures that any single poor condition pulls the entire score toward zero.
 
-## Season Classification
+## 1. Thermal Regime Classification
 
-The model distinguishes spring and summer flight conditions based on calendar month:
+Replaces calendar-based season detection with a thermal regime based on recent temperatures:
 
-- **Spring**: March--May (months 3--5) and shoulder months (Sep--Feb default to spring)
-- **Summer**: June--August (months 6--8)
+$$T_{\text{avg,5d}} = \frac{1}{5}\sum_{i=0}^{4} T_{\text{mean}}(d-i)$$
 
-Each season has a distinct flight time window, and several factors use season-specific ideal ranges.
+| Regime | Condition |
+|--------|-----------|
+| Spring | $10 \le T_{\text{avg,5d}} < 18$ |
+| Summer | $T_{\text{avg,5d}} \ge 18$ |
 
-## Flight Time Window
+## 2. Dynamic Flight Window
 
-Weather data is averaged over the flight time window for each day:
+Instead of fixed time intervals, the optimal flight hour is computed from a utility function:
 
-| Season | Flight Window |
-|--------|--------------|
-| Spring | 11:00--15:00 |
-| Summer | 15:00--20:00 |
+$$u(t) = T(t) - 0.5 \cdot W(t) - 2.0 \cdot P(t)$$
 
-All weather factors except Daily Low and Prev. Days are computed as the mean of hourly values within this window.
+where $T$ is temperature, $W$ is wind speed, and $P$ is precipitation, all at hour $t$.
 
-## Factor Scoring Functions
+$$t^* = \arg\max_{t \in [8, 22]} u(t)$$
 
-Each factor maps a weather value to a score in [0, 1] using a **plateau function** with Gaussian tails:
+The averaging window is $[t^* - 2, t^* + 2]$ (5 hours centered on $t^*$). All weather factors except Daily Low, Prev. Days, and Pressure are averaged over this window.
 
-### Plateau Function
+## 3. Scoring Primitives
 
-For a two-sided interval [lo, hi] with bandwidths $b_L$ and $b_R$:
+### Soft plateau (Gaussian tails)
+
+For factors where gradual degradation is appropriate (temperature, humidity, cloud cover, soil moisture):
 
 $$
 f(x) = \begin{cases}
@@ -40,65 +41,116 @@ f(x) = \begin{cases}
 \end{cases}
 $$
 
-where $m = (lo + hi)/2$ is the midpoint and $h = (hi - lo)/2$ is the half-width.
+### Hard constraint (quartic tails)
 
-**Properties**: The score is 1.0 at the center of the interval, 0.8 at the edges, and decays as a Gaussian outside with bandwidth $b$ (the distance at which score drops to $0.8 \cdot e^{-1} \approx 0.29$).
+For factors where exceeding the threshold should rapidly suppress the score (wind, current precipitation):
 
-**One-sided variants**:
+$$f_{\text{hard}}(x; \theta, b) = \begin{cases}
+1 & \text{if } x \le \theta \\
+0.8 \exp\!\left(-\left(\frac{x - \theta}{b}\right)^4\right) & \text{if } x > \theta
+\end{cases}$$
 
-- $f_{\le}(x; \theta, b)$: Score is 1.0 for $x \le \theta$, then $0.8 \exp(-(x-\theta)^2/b^2)$ above.
-- $f_{\ge}(x; \theta, b)$: Score is 1.0 for $x \ge \theta$, then $0.8 \exp(-(\theta-x)^2/b^2)$ below.
+### One-sided (soft)
 
-### Factor Parameters
+$$f_{\ge}(x; \theta, b) = \begin{cases}
+1 & \text{if } x \ge \theta \\
+0.8 \exp\!\left(-\left(\frac{\theta - x}{b}\right)^2\right) & \text{if } x < \theta
+\end{cases}$$
 
-| Factor | Type | Season | Parameters | Notes |
-|--------|------|--------|------------|-------|
-| Temperature | Plateau | Spring | lo=15, hi=25, $b_L$=$b_R$=5 C | Avg during flight window |
-| Temperature | Plateau | Summer | lo=24, hi=30, $b_L$=$b_R$=4 C | Avg during flight window |
-| Humidity | Plateau | Spring | lo=50, hi=60, $b_L$=$b_R$=10 % | Avg during flight window |
-| Humidity | One-sided $\ge$ | Summer | $\theta$=70, $b$=15 % | No upper cap |
-| Precipitation | One-sided $\le$ | Both | $\theta$=0, $b$=0.3 mm/h | Avg hourly precip in window |
-| Wind | One-sided $\le$ | Both | $\theta$=10, $b$=5 km/h | Avg during flight window |
-| Sunlight | One-sided $\le$ | Both | $\theta$=20, $b$=30 % cloud | Avg cloud cover in window |
-| Daily Low | One-sided $\ge$ | Spring | $\theta$=5, $b$=3 C | From daily forecast |
-| Daily Low | -- | Summer | Always 1.0 | Irrelevant in summer |
-| Prev. Days | Composite | Spring | See below | 2-day lookback |
-| Prev. Days | Binary | Summer | See below | Rain presence |
+## 4. Factor Definitions
 
-### Prev. Days (Spring)
+### Temperature (soft plateau)
 
-Combines two sub-scores with equal weight:
+| Regime | Interval | Bandwidth |
+|--------|----------|-----------|
+| Spring | [13, 23] C | $b_L = b_R = 5$ |
+| Summer | [22, 30] C | $b_L = b_R = 4$ |
 
-1. **Daytime temperature**: Average temperature during hours 10--16 over the 2 days before. Scored with $f_{\ge}(T_{avg}; 15, 4)$.
-2. **Overnight lows**: Minimum daily low over the previous days. Scored with $f_{\ge}(T_{min}; 5, 3)$.
+### Rain Trigger (post-rain, critical)
 
-$$\text{PrevDays}_{\text{spring}} = 0.5 \cdot f_{\ge}(T_{avg}; 15, 4) + 0.5 \cdot f_{\ge}(T_{min}; 5, 3)$$
+Effective recent rainfall with exponential decay:
 
-### Prev. Days (Summer)
+$$R = \sum_{h=1}^{48} P(t^* - h) \cdot e^{-h/\tau}, \quad \tau = 6$$
 
-Binary: 1.0 if any hour within 24h before or after the target day has precipitation $\ge$ 0.5 mm; 0.3 otherwise.
+Scored with soft plateau on $R$: optimal range $[0.5, 3]$ mm effective rain, $b_L = 0.5$, $b_R = 2$.
 
-## Aggregation: Weighted Geometric Mean
+**Hard veto**: If mean precipitation during flight window $> 0.2$ mm/h, score is set to 0.
 
-The 7 factor scores $s_1, \ldots, s_7$ are combined using a weighted geometric mean:
+### Humidity (soft plateau, with rain interaction)
 
-$$S = 100 \cdot \prod_{i=1}^{7} s_i^{w_i}$$
+| Regime | Type | Parameters |
+|--------|------|------------|
+| Spring | Plateau | [50, 60]%, $b = 10$ |
+| Summer | One-sided $\ge$ | $\theta = 70$%, $b = 15$ |
 
-where the weights $w_i$ sum to 1:
+The raw humidity score is multiplied by $\max(\text{rainScore}, 0.3)$ to model the interaction between humidity and recent rainfall.
+
+### Wind (hard constraint)
+
+$$f_{\text{wind}}(w) = f_{\text{hard}}(w; \theta = 10 \text{ km/h}, b = 5)$$
+
+Uses quartic decay for rapid suppression above 10 km/h.
+
+### Cloud Cover (soft plateau, two-sided)
+
+$$f_{\text{cloud}}(c) = f(c; lo = 30, hi = 70, b_L = 15, b_R = 20)$$
+
+Not one-sided: both very clear and very overcast are suboptimal.
+
+### Daily Low (one-sided, spring only)
+
+$$f_{\text{low}} = f_{\ge}(T_{\min}; \theta = 5 \text{ C}, b = 3)$$
+
+Score is 1.0 in summer (irrelevant).
+
+### Barometric Pressure Trend (new)
+
+Computed at $t^*$:
+
+$$\Delta P_{6h} = P(t^*) - P(t^* - 6), \quad \Delta P_{24h} = P(t^*) - P(t^* - 24)$$
+
+Preferred pattern: prior drop then stabilization.
+
+$$f_{\text{pressure}} = f_{\ge}(-\Delta P_{24h};\, \theta = 2\text{ hPa},\, b = 3) \;\cdot\; f_{\ge}(\Delta P_{6h};\, \theta = 0,\, b = 2)$$
+
+### Soil Moisture (new)
+
+Shallow soil moisture (0--1 cm depth):
+
+$$f_{\text{soil}} = f(M;\, lo = 0.15,\, hi = 0.35,\, b_L = 0.08,\, b_R = 0.1) \quad [\text{m}^3/\text{m}^3]$$
+
+Suppressed if very dry ($< 0.1$) or saturated ($> 0.45$).
+
+### Prev. Days
+
+**Spring** (3--5 day lookback):
+
+$$\text{PrevDays}_{\text{spring}} = 0.5 \cdot f_{\ge}(\bar{T}_{\text{daytime}};\, 15,\, 4) + 0.5 \cdot f_{\ge}(T_{\text{min,prev}};\, 5,\, 3)$$
+
+where $\bar{T}_{\text{daytime}}$ is the mean temperature during hours 10--16 over the preceding 3--5 days, and $T_{\text{min,prev}}$ is the minimum daily low over the same period.
+
+**Summer**: Binary --- 1.0 if any hour within 24h before/after has $P \ge 0.5$ mm; 0.3 otherwise.
+
+## 5. Aggregation: Weighted Geometric Mean
+
+$$S = 100 \cdot \exp\!\left(\sum_{i=1}^{9} w_i \cdot \ln(s_i + 10^{-6})\right)$$
 
 | Factor | Weight $w_i$ |
 |--------|-------------|
-| Temperature | 0.22 |
-| Precipitation | 0.18 |
-| Humidity | 0.15 |
+| Rain Trigger | 0.19 |
+| Temperature | 0.17 |
+| Prev. Days | 0.14 |
 | Wind | 0.13 |
-| Prev. Days | 0.12 |
-| Sunlight | 0.10 |
-| Daily Low | 0.10 |
+| Humidity | 0.10 |
+| Pressure Trend | 0.08 |
+| Cloud Cover | 0.07 |
+| Daily Low | 0.06 |
+| Soil Moisture | 0.06 |
+| **Total** | **1.00** |
 
-**Why geometric mean?** Unlike an arithmetic (weighted) average, the geometric mean is multiplicative: if any single factor approaches zero, it pulls the entire score toward zero. This reflects the biological reality that ant nuptial flights require *all* conditions to be acceptable --- heavy rain cannot be compensated by perfect temperature.
+The $10^{-6}$ floor prevents $\ln(0)$ while preserving the sharp penalty for near-zero scores.
 
-## Score Labels
+## 6. Score Labels
 
 | Score Range | Label |
 |-------------|-------|
@@ -108,17 +160,23 @@ where the weights $w_i$ sum to 1:
 | 20--39 | Moderate |
 | 0--19 | Low |
 
-## Data Source
+## 7. Data Source
 
-Hourly weather data from the [Open-Meteo Forecast API](https://open-meteo.com/), including: temperature (2m), relative humidity (2m), precipitation, surface pressure, wind speed (10m), soil moisture (0--1cm), cloud cover. Daily minimum temperature from the daily forecast endpoint. Past 2 days of data are requested for the Prev. Days factor.
+Hourly weather data from the [Open-Meteo Forecast API](https://open-meteo.com/): temperature (2m), relative humidity (2m), precipitation, surface pressure, wind speed (10m), soil moisture (0--1cm), cloud cover. Daily minimum and mean temperatures from the daily endpoint. Past 7 days of data are requested for the thermal regime and prev. days factors.
 
-## Parameters to Validate
+## 8. Parameters to Validate
 
-We invite expert review of:
+1. **Thermal regime thresholds** (10/18 C for spring/summer transition)
+2. **Utility function coefficients** for dynamic flight window ($-0.5W$, $-2P$)
+3. **Rain trigger**: exponential decay $\tau = 6$, optimal range [0.5, 3] mm, veto at 0.2 mm/h
+4. **Quartic vs. Gaussian decay**: is the sharper wind cutoff biologically justified?
+5. **Cloud cover**: is two-sided [30, 70]% correct, or should clear sky always score higher?
+6. **Pressure trend**: does the drop-then-stabilize pattern match observed flights?
+7. **Soil moisture range** [0.15, 0.35] m³/m³ and its relevance to flight timing
+8. **Weights** in the geometric mean
+9. **Humidity × rain interaction**: is multiplicative coupling the right model?
 
-1. **Season boundaries** (currently calendar-based; should latitude matter?)
-2. **Flight window hours** (spring 11--15, summer 15--20)
-3. **Ideal ranges and bandwidths** for each factor
-4. **Weights** in the geometric mean
-5. **Prev. Days** logic (warm streak in spring, rain proximity in summer)
-6. **Missing factors** (e.g., barometric pressure trend, soil type, species-specific differences)
+## 9. Future Extensions
+
+- Species mixture: $S = \max_k S_k$ across species-specific parameter sets
+- Calibration using observed flight logs

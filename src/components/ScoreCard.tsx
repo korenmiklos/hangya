@@ -15,7 +15,7 @@ export default function ScoreCard({ score }: Props) {
         className="text-xs font-medium uppercase tracking-wider mb-1"
         style={{ color }}
       >
-        {score.season === "spring" ? "🌸 Spring" : "☀️ Summer"} &middot;
+        {score.regime === "spring" ? "🌸 Spring" : "☀️ Summer"} &middot;
         Flight window {score.flightWindow}
       </p>
 
