@@ -1,0 +1,16 @@
+{
+  "name": "Hangya - Ant Flight Predictor",
+  "short_name": "Hangya",
+  "description": "Predict ant nuptial flight conditions based on weather data",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fffbeb",
+  "theme_color": "#b45309",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
