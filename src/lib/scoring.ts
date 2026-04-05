@@ -158,6 +158,39 @@ function getPrev48hPrecip(
   return Math.round(total * 10) / 10;
 }
 
+/**
+ * Count consecutive days without measurable precipitation, looking backwards.
+ * Used for Peak Summer drought veto (>14d drought → unsuitable if 0mm in 48h).
+ */
+function getDroughtDays(
+  hourly: HourlyWeather[],
+  date: string,
+): number {
+  // Group hourly precip by date, going backwards
+  let droughtDays = 0;
+  const dateObj = new Date(date + "T12:00:00");
+
+  for (let d = 1; d <= 30; d++) {
+    const checkDate = new Date(dateObj);
+    checkDate.setDate(checkDate.getDate() - d);
+    const checkStr = checkDate.toISOString().slice(0, 10);
+
+    let dayPrecip = 0;
+    for (const w of hourly) {
+      if (w.time.slice(0, 10) === checkStr) {
+        dayPrecip += w.precipitation;
+      }
+    }
+
+    if (dayPrecip < 0.1) {
+      droughtDays++;
+    } else {
+      break;
+    }
+  }
+  return droughtDays;
+}
+
 function getConsecutiveDaysAbove(
   weather: WeatherResponse,
   date: string,
@@ -191,6 +224,7 @@ function evaluateBlock(
   overnightLow: number,
   prev48hPrecip: number,
   consecDays: number,
+  droughtDays: number,
   thresholds: SeasonThresholds,
 ): BlockResult {
   // Average the hourly values in this 2-hour block
@@ -254,7 +288,7 @@ function evaluateBlock(
       displayName: "Previous 48h Rainfall",
       value: prev48hPrecip,
       unit: "mm",
-      rating: ratePrev48hPrecip(prev48hPrecip, thresholds),
+      rating: ratePrev48hPrecip(prev48hPrecip, thresholds, droughtDays),
       category: "secondary",
     },
     {
@@ -386,6 +420,7 @@ export function computeDailyScores(
     const overnightLow = getOvernightLow(weather, date);
     const prev48h = getPrev48hPrecip(weather.hourly, date, flightStart);
     const consecDays = getConsecutiveDaysAbove(weather, date, thresholds.consecDays.threshold);
+    const droughtDays = getDroughtDays(weather.hourly, date);
 
     // Collect hourly data within the flight window for this date
     const windowHourly = weather.hourly.filter((w) => {
@@ -400,7 +435,7 @@ export function computeDailyScores(
     if (windowHourly.length >= 2) {
       for (let i = 0; i <= windowHourly.length - 2; i++) {
         const slice = windowHourly.slice(i, i + 2);
-        const block = evaluateBlock(slice, overnightLow, prev48h, consecDays, thresholds);
+        const block = evaluateBlock(slice, overnightLow, prev48h, consecDays, droughtDays, thresholds);
 
         if (
           !bestBlock ||
@@ -411,7 +446,7 @@ export function computeDailyScores(
       }
     } else if (windowHourly.length === 1) {
       // Only 1 hour available, evaluate it alone
-      bestBlock = evaluateBlock(windowHourly, overnightLow, prev48h, consecDays, thresholds);
+      bestBlock = evaluateBlock(windowHourly, overnightLow, prev48h, consecDays, droughtDays, thresholds);
     }
 
     // Fallback if no hourly data
@@ -423,7 +458,7 @@ export function computeDailyScores(
         { name: "precipitation", displayName: "Precipitation", value: 0, unit: "mm/h", rating: "optimal", category: "critical" },
         { name: "cloudCover", displayName: "Cloud Cover", value: 0, unit: "%", rating: "unsuitable", category: "secondary" },
         { name: "windSpeed", displayName: "Wind Speed", value: 0, unit: "km/h", rating: "optimal", category: "critical" },
-        { name: "prev48hPrecip", displayName: "Previous 48h Rainfall", value: prev48h, unit: "mm", rating: ratePrev48hPrecip(prev48h, thresholds), category: "secondary" },
+        { name: "prev48hPrecip", displayName: "Previous 48h Rainfall", value: prev48h, unit: "mm", rating: ratePrev48hPrecip(prev48h, thresholds, droughtDays), category: "secondary" },
         { name: "consecDays", displayName: "Consecutive Warm Days", value: consecDays, unit: "days", rating: rateConsecDays(consecDays, thresholds), category: "primary" },
       ];
       bestBlock = { factors: defaultFactors, suitability: "unsuitable" };
