@@ -7,7 +7,7 @@ export default function Header() {
         </span>
         <div>
           <h1 className="text-xl font-bold leading-tight">Hangya</h1>
-          <p className="text-amber-200 text-xs">Ant Flight Predictor</p>
+          <p className="text-amber-200 text-xs">Ant Nuptial Flight Predictor</p>
         </div>
       </div>
     </header>
