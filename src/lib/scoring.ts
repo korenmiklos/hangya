@@ -1,377 +1,380 @@
 import type {
   HourlyWeather,
   DailyScore,
-  FactorScore,
-  ScoreLabel,
-  ThermalRegime,
+  FactorResult,
+  FactorRating,
+  Suitability,
   WeatherResponse,
+  GDDData,
+  SeasonThresholds,
 } from "../types";
+import {
+  calculateDaylength,
+  getDayOfYear,
+  determineSeason,
+  SEASON_CONFIGS,
+} from "./seasons";
 
 // ============================================================
-// 1. Thermal regime (replaces calendar-based season)
+// Factor rating helpers
 // ============================================================
 
-function classifyRegime(
-  date: string,
-  dailyMeanTemps: number[],
-  dailyDates: string[],
-): ThermalRegime {
-  const dateIdx = dailyDates.indexOf(date);
-  if (dateIdx < 0) return "spring";
-
-  // Mean of daily mean temps over last 5 days (inclusive of target)
-  let sum = 0;
-  let count = 0;
-  for (let i = Math.max(0, dateIdx - 4); i <= dateIdx; i++) {
-    sum += dailyMeanTemps[i];
-    count++;
+function rateFlightTemp(
+  temp: number,
+  t: SeasonThresholds,
+  cloudCover: number,
+): FactorRating {
+  if (temp >= t.flightTemp.optimalMin && temp <= t.flightTemp.optimalMax) {
+    return "optimal";
   }
-  const tAvg5d = count > 0 ? sum / count : 10;
+  if (temp >= t.flightTemp.acceptableMin && temp <= t.flightTemp.acceptableMax) {
+    // Some seasons require low clouds for acceptable low temps
+    if (
+      t.flightTemp.acceptableRequiresLowClouds !== undefined &&
+      temp < t.flightTemp.optimalMin &&
+      cloudCover > t.flightTemp.acceptableRequiresLowClouds
+    ) {
+      return "unsuitable";
+    }
+    return "acceptable";
+  }
+  return "unsuitable";
+}
 
-  if (tAvg5d >= 18) return "summer";
-  return "spring"; // includes 10 <= T < 18 and cold
+function rateOvernightLow(low: number, t: SeasonThresholds): FactorRating {
+  if (low >= t.overnightLow.optimalMin && low <= t.overnightLow.optimalMax) {
+    return "optimal";
+  }
+  if (low >= t.overnightLow.acceptableMin && low <= t.overnightLow.acceptableMax) {
+    return "acceptable";
+  }
+  return "unsuitable";
+}
+
+function rateHumidity(humidity: number, t: SeasonThresholds): FactorRating {
+  if (humidity >= t.humidity.optimalMin && humidity <= t.humidity.optimalMax) {
+    return "optimal";
+  }
+  if (humidity >= t.humidity.acceptableMin && humidity <= t.humidity.acceptableMax) {
+    return "acceptable";
+  }
+  return "unsuitable";
+}
+
+function ratePrecipitation(precip: number, t: SeasonThresholds): FactorRating {
+  if (precip <= t.precipitation.optimalMax) return "optimal";
+  if (precip <= t.precipitation.acceptableMax) return "acceptable";
+  return "unsuitable";
+}
+
+function rateCloudCover(
+  cloud: number,
+  temp: number,
+  t: SeasonThresholds,
+): FactorRating {
+  if (cloud >= t.cloudCover.optimalMin && cloud <= t.cloudCover.optimalMax) {
+    return "optimal";
+  }
+  if (cloud >= t.cloudCover.acceptableMin && cloud <= t.cloudCover.acceptableMax) {
+    // Veto check for late spring: >60% clouds with temp < 19°C
+    if (t.cloudCover.vetoTempThreshold !== undefined && temp < t.cloudCover.vetoTempThreshold) {
+      return "unsuitable";
+    }
+    return "acceptable";
+  }
+  return "unsuitable";
+}
+
+function rateWindSpeed(wind: number, t: SeasonThresholds): FactorRating {
+  if (wind <= t.windSpeed.optimalMax) return "optimal";
+  if (wind <= t.windSpeed.acceptableMax) return "acceptable";
+  return "unsuitable";
+}
+
+function ratePrev48hPrecip(
+  precip: number,
+  t: SeasonThresholds,
+  droughtDays?: number,
+): FactorRating {
+  // Peak summer drought veto
+  if (
+    t.prev48hPrecip.droughtVetoDays !== undefined &&
+    droughtDays !== undefined &&
+    precip === 0 &&
+    droughtDays > t.prev48hPrecip.droughtVetoDays
+  ) {
+    return "unsuitable";
+  }
+  if (precip >= t.prev48hPrecip.optimalMin && precip <= t.prev48hPrecip.optimalMax) {
+    return "optimal";
+  }
+  if (precip >= t.prev48hPrecip.acceptableMin && precip <= t.prev48hPrecip.acceptableMax) {
+    return "acceptable";
+  }
+  return "unsuitable";
+}
+
+function rateConsecDays(days: number, t: SeasonThresholds): FactorRating {
+  if (days >= t.consecDays.optimalDays) return "optimal";
+  if (days >= t.consecDays.acceptableDays) return "acceptable";
+  return "unsuitable";
 }
 
 // ============================================================
-// 2. Dynamic flight window
+// Data extraction helpers
 // ============================================================
 
-function findOptimalFlightWindow(
-  hourly: HourlyWeather[],
+function getOvernightLow(
+  weather: WeatherResponse,
   date: string,
-): { tStar: number; startHour: number; endHour: number } {
-  // u(t) = temp(t) - 0.5 * wind(t) - 2.0 * precip(t)
-  let bestU = -Infinity;
-  let tStar = 12; // fallback
-
-  for (const w of hourly) {
+): number {
+  const idx = weather.dailyDates.indexOf(date);
+  if (idx >= 0) return weather.dailyMinTemps[idx];
+  // Fallback: find min temp from midnight to 6am
+  let min = Infinity;
+  for (const w of weather.hourly) {
     if (w.time.slice(0, 10) !== date) continue;
     const h = new Date(w.time).getHours();
-    if (h < 8 || h > 22) continue; // skip night hours
-    const u = w.temperature - 0.5 * w.windSpeed - 2.0 * w.precipitation;
-    if (u > bestU) {
-      bestU = u;
-      tStar = h;
-    }
+    if (h <= 6) min = Math.min(min, w.temperature);
   }
-
-  return {
-    tStar,
-    startHour: Math.max(0, tStar - 2),
-    endHour: Math.min(23, tStar + 2),
-  };
+  return min === Infinity ? 0 : min;
 }
 
-// ============================================================
-// Scoring primitives
-// ============================================================
-
-/** Soft plateau: Gaussian tails exp(-(d/b)^2) */
-function plateau(
-  value: number,
-  lo: number,
-  hi: number,
-  bwLo: number,
-  bwHi: number,
-): number {
-  if (value >= lo && value <= hi) {
-    const mid = (lo + hi) / 2;
-    const halfWidth = (hi - lo) / 2;
-    if (halfWidth === 0) return 1;
-    const t = Math.abs(value - mid) / halfWidth;
-    return 0.8 + 0.2 * Math.cos((t * Math.PI) / 2);
-  }
-  if (value < lo) {
-    const d = (lo - value) / bwLo;
-    return 0.8 * Math.exp(-(d * d));
-  }
-  const d = (value - hi) / bwHi;
-  return 0.8 * Math.exp(-(d * d));
-}
-
-function plateauBelowHard(value: number, threshold: number, bw: number): number {
-  if (value <= threshold) return 1;
-  const d = (value - threshold) / bw;
-  return 0.8 * Math.exp(-(d * d * d * d));
-}
-
-function plateauAbove(value: number, threshold: number, bw: number): number {
-  if (value >= threshold) return 1;
-  const d = (threshold - value) / bw;
-  return 0.8 * Math.exp(-(d * d));
-}
-
-// ============================================================
-// 3. Precipitation: post-rain trigger
-// ============================================================
-
-/**
- * Effective recent rainfall: R = sum_{h=1}^{48} precip(t-h) * exp(-h/tau)
- * tau ≈ 6
- */
-function computeEffectiveRain(
+function getPrev48hPrecip(
   hourly: HourlyWeather[],
   date: string,
-  tStar: number,
+  flightStart: number,
 ): number {
-  const targetTime = `${date}T${String(tStar).padStart(2, "0")}`;
+  const targetTime = `${date}T${String(flightStart).padStart(2, "0")}`;
   const targetIdx = hourly.findIndex((w) => w.time.startsWith(targetTime));
   if (targetIdx < 0) return 0;
 
-  const tau = 6;
-  let R = 0;
+  let total = 0;
   for (let h = 1; h <= 48; h++) {
     const idx = targetIdx - h;
     if (idx < 0) break;
-    R += hourly[idx].precipitation * Math.exp(-h / tau);
+    total += hourly[idx].precipitation;
   }
-  return R;
+  return Math.round(total * 10) / 10;
 }
 
 /**
- * Current precipitation during flight window (mean).
- * Used as a hard veto: zero out if > 0.2 mm/h.
+ * Count consecutive days without measurable precipitation, looking backwards.
+ * Used for Peak Summer drought veto (>14d drought → unsuitable if 0mm in 48h).
  */
-function meanPrecipInWindow(
+function getDroughtDays(
   hourly: HourlyWeather[],
   date: string,
-  startHour: number,
-  endHour: number,
 ): number {
-  let sum = 0;
-  let count = 0;
-  for (const w of hourly) {
-    if (w.time.slice(0, 10) !== date) continue;
-    const h = new Date(w.time).getHours();
-    if (h >= startHour && h <= endHour) {
-      sum += w.precipitation;
-      count++;
-    }
-  }
-  return count > 0 ? sum / count : 0;
-}
+  // Group hourly precip by date, going backwards
+  let droughtDays = 0;
+  const dateObj = new Date(date + "T12:00:00");
 
-function scoreRainTrigger(effectiveRain: number, currentPrecip: number): number {
-  // Hard veto: if raining during flight window
-  if (currentPrecip > 0.2) return 0;
-  // Plateau on effective rain: optimal [0.5, 3] mm
-  return plateau(effectiveRain, 0.5, 3, 0.5, 2);
-}
+  for (let d = 1; d <= 30; d++) {
+    const checkDate = new Date(dateObj);
+    checkDate.setDate(checkDate.getDate() - d);
+    const checkStr = checkDate.toISOString().slice(0, 10);
 
-// ============================================================
-// 4. Factor scoring functions
-// ============================================================
-
-// Soft: temperature
-function scoreTemperature(temp: number, regime: ThermalRegime): number {
-  if (regime === "spring") return plateau(temp, 13, 23, 5, 5);
-  return plateau(temp, 22, 30, 4, 4);
-}
-
-// Soft: humidity (will be multiplied by rain score for interaction)
-function scoreHumidity(humidity: number, regime: ThermalRegime): number {
-  if (regime === "spring") return plateau(humidity, 50, 60, 10, 10);
-  return plateauAbove(humidity, 70, 15);
-}
-
-// Hard: wind
-function scoreWind(windSpeed: number): number {
-  return plateauBelowHard(windSpeed, 10, 5);
-}
-
-// Sunlight: two-sided plateau on cloud cover [30, 70]%
-function scoreSunlight(cloudCover: number): number {
-  return plateau(cloudCover, 30, 70, 15, 20);
-}
-
-// Daily low (spring only)
-function scoreDailyLow(dailyMin: number | null, regime: ThermalRegime): number {
-  if (regime === "summer") return 1;
-  if (dailyMin === null) return 0.5;
-  return plateauAbove(dailyMin, 5, 3);
-}
-
-// ============================================================
-// 7. Barometric pressure trend
-// ============================================================
-
-function scorePressureTrend(
-  hourly: HourlyWeather[],
-  date: string,
-  tStar: number,
-): { score: number; dP6h: number; dP24h: number } {
-  const targetTime = `${date}T${String(tStar).padStart(2, "0")}`;
-  const targetIdx = hourly.findIndex((w) => w.time.startsWith(targetTime));
-  if (targetIdx < 0) return { score: 0.5, dP6h: 0, dP24h: 0 };
-
-  const pNow = hourly[targetIdx].pressure;
-  const p6h = targetIdx >= 6 ? hourly[targetIdx - 6].pressure : pNow;
-  const p24h = targetIdx >= 24 ? hourly[targetIdx - 24].pressure : pNow;
-
-  const dP6h = pNow - p6h; // positive = rising
-  const dP24h = pNow - p24h;
-
-  // Prefer prior drop then stabilization:
-  // f = f_ge(-dP_24h; theta=2) * f_ge(dP_6h; theta=0)
-  const f1 = plateauAbove(-dP24h, 2, 3); // 24h drop of at least 2 hPa
-  const f2 = plateauAbove(dP6h, 0, 2);   // 6h trend stable or rising
-
-  return { score: f1 * f2, dP6h, dP24h };
-}
-
-// ============================================================
-// 8. Soil moisture
-// ============================================================
-
-function scoreSoilMoisture(soilMoisture: number): number {
-  // Optimal mid-range; suppress if very dry or saturated
-  // Typical range: 0.05 (dry) to 0.5 (saturated)
-  return plateau(soilMoisture, 0.15, 0.35, 0.08, 0.1);
-}
-
-// ============================================================
-// 6. PrevDays (extended to 3-5 days)
-// ============================================================
-
-function scoreSurroundingDays(
-  hourly: HourlyWeather[],
-  dayDate: string,
-  regime: ThermalRegime,
-  dailyMinTemps: number[],
-  dailyDates: string[],
-): number {
-  if (regime === "spring") {
-    // Average daytime temp (10-16h) over 3-5 days before
-    let daytimeSum = 0;
-    let daytimeCount = 0;
+    let dayPrecip = 0;
     for (const w of hourly) {
-      const wDate = w.time.slice(0, 10);
-      if (wDate >= dayDate) break;
-      const diffDays =
-        (new Date(dayDate).getTime() - new Date(wDate).getTime()) / 86400000;
-      if (diffDays > 5) continue;
-      const h = new Date(w.time).getHours();
-      if (h >= 10 && h <= 16) {
-        daytimeSum += w.temperature;
-        daytimeCount++;
+      if (w.time.slice(0, 10) === checkStr) {
+        dayPrecip += w.precipitation;
       }
     }
-    const avgDaytimeTemp = daytimeCount > 0 ? daytimeSum / daytimeCount : 10;
-    const tempScore = plateauAbove(avgDaytimeTemp, 15, 4);
 
-    // Min daily low over previous 3-5 days
-    let minLow = Infinity;
-    let lowCount = 0;
-    for (let d = 0; d < dailyDates.length; d++) {
-      if (dailyDates[d] >= dayDate) continue;
-      const diffDays =
-        (new Date(dayDate).getTime() - new Date(dailyDates[d]).getTime()) /
-        86400000;
-      if (diffDays > 5) continue;
-      minLow = Math.min(minLow, dailyMinTemps[d]);
-      lowCount++;
-    }
-    const lowScore = lowCount > 0 ? plateauAbove(minLow, 5, 3) : 0.5;
-
-    return 0.5 * tempScore + 0.5 * lowScore;
-  }
-
-  // Summer: rainfall within 24h before or after this day
-  let hasRain = false;
-  for (const w of hourly) {
-    const wDate = w.time.slice(0, 10);
-    if (wDate === dayDate) continue;
-    const diffDays = Math.abs(
-      (new Date(wDate).getTime() - new Date(dayDate).getTime()) / 86400000,
-    );
-    if (diffDays <= 1 && w.precipitation >= 0.5) {
-      hasRain = true;
+    if (dayPrecip < 0.1) {
+      droughtDays++;
+    } else {
       break;
     }
   }
-  return hasRain ? 1 : 0.3;
+  return droughtDays;
 }
 
-// ============================================================
-// Aggregation helpers
-// ============================================================
-
-interface FlightWindowAvg {
-  temperature: number;
-  humidity: number;
-  windSpeed: number;
-  cloudCover: number;
-  soilMoisture: number;
-  count: number;
-}
-
-function averageFlightWindow(
-  hourly: HourlyWeather[],
+function getConsecutiveDaysAbove(
+  weather: WeatherResponse,
   date: string,
-  startHour: number,
-  endHour: number,
-): FlightWindowAvg {
-  let temp = 0,
-    hum = 0,
-    wind = 0,
-    cloud = 0,
-    soil = 0,
-    count = 0;
-  for (const w of hourly) {
-    if (w.time.slice(0, 10) !== date) continue;
-    const h = new Date(w.time).getHours();
-    if (h >= startHour && h <= endHour) {
-      temp += w.temperature;
-      hum += w.humidity;
-      wind += w.windSpeed;
-      cloud += w.cloudCover;
-      soil += w.soilMoisture;
+  threshold: number,
+): number {
+  const dateIdx = weather.dailyDates.indexOf(date);
+  if (dateIdx < 0) return 0;
+
+  let count = 0;
+  for (let i = dateIdx - 1; i >= 0; i--) {
+    if (weather.dailyMaxTemps[i] >= threshold) {
       count++;
+    } else {
+      break;
     }
   }
-  if (count === 0) {
-    return {
-      temperature: 0,
-      humidity: 0,
-      windSpeed: 0,
-      cloudCover: 100,
-      soilMoisture: 0.2,
-      count: 0,
-    };
+  return count;
+}
+
+// ============================================================
+// 2-hour block evaluation
+// ============================================================
+
+interface BlockResult {
+  factors: FactorResult[];
+  suitability: Suitability;
+}
+
+function evaluateBlock(
+  hourlySlice: HourlyWeather[],
+  overnightLow: number,
+  prev48hPrecip: number,
+  consecDays: number,
+  droughtDays: number,
+  thresholds: SeasonThresholds,
+): BlockResult {
+  // Average the hourly values in this 2-hour block
+  const avgTemp = hourlySlice.reduce((s, w) => s + w.temperature, 0) / hourlySlice.length;
+  const avgHumidity = hourlySlice.reduce((s, w) => s + w.humidity, 0) / hourlySlice.length;
+  const maxPrecip = Math.max(...hourlySlice.map((w) => w.precipitation));
+  const avgCloud = hourlySlice.reduce((s, w) => s + w.cloudCover, 0) / hourlySlice.length;
+  const avgWind = hourlySlice.reduce((s, w) => s + w.windSpeed, 0) / hourlySlice.length;
+
+  const factors: FactorResult[] = [
+    {
+      name: "flightTemp",
+      displayName: "Flight Temperature",
+      value: Math.round(avgTemp * 10) / 10,
+      unit: "°C",
+      rating: rateFlightTemp(avgTemp, thresholds, avgCloud),
+      category: "primary",
+    },
+    {
+      name: "overnightLow",
+      displayName: "Overnight Low",
+      value: Math.round(overnightLow * 10) / 10,
+      unit: "°C",
+      rating: rateOvernightLow(overnightLow, thresholds),
+      category: "critical",
+    },
+    {
+      name: "humidity",
+      displayName: "Relative Humidity",
+      value: Math.round(avgHumidity),
+      unit: "%",
+      rating: rateHumidity(avgHumidity, thresholds),
+      category: "primary",
+    },
+    {
+      name: "precipitation",
+      displayName: "Precipitation",
+      value: Math.round(maxPrecip * 10) / 10,
+      unit: "mm/h",
+      rating: ratePrecipitation(maxPrecip, thresholds),
+      category: "critical",
+    },
+    {
+      name: "cloudCover",
+      displayName: "Cloud Cover",
+      value: Math.round(avgCloud),
+      unit: "%",
+      rating: rateCloudCover(avgCloud, avgTemp, thresholds),
+      category: "secondary",
+    },
+    {
+      name: "windSpeed",
+      displayName: "Wind Speed",
+      value: Math.round(avgWind * 10) / 10,
+      unit: "km/h",
+      rating: rateWindSpeed(avgWind, thresholds),
+      category: "critical",
+    },
+    {
+      name: "prev48hPrecip",
+      displayName: "Previous 48h Rainfall",
+      value: prev48hPrecip,
+      unit: "mm",
+      rating: ratePrev48hPrecip(prev48hPrecip, thresholds, droughtDays),
+      category: "secondary",
+    },
+    {
+      name: "consecDays",
+      displayName: "Consecutive Warm Days",
+      value: consecDays,
+      unit: consecDays === 1 ? "day" : "days",
+      rating: rateConsecDays(consecDays, thresholds),
+      category: "primary",
+    },
+  ];
+
+  // Apply suitability matrix
+  const suitability = computeSuitability(factors);
+  return { factors, suitability };
+}
+
+// ============================================================
+// Suitability matrix
+// ============================================================
+
+function computeSuitability(factors: FactorResult[]): Suitability {
+  // If ANY factor is unsuitable → unsuitable
+  if (factors.some((f) => f.rating === "unsuitable")) {
+    return "unsuitable";
   }
-  return {
-    temperature: temp / count,
-    humidity: hum / count,
-    windSpeed: wind / count,
-    cloudCover: cloud / count,
-    soilMoisture: soil / count,
-    count,
-  };
+
+  const critical = factors.filter((f) => f.category === "critical");
+  const primary = factors.filter((f) => f.category === "primary");
+  const secondary = factors.filter((f) => f.category === "secondary");
+
+  const allCriticalOptimal = critical.every((f) => f.rating === "optimal");
+  const allPrimaryOptimal = primary.every((f) => f.rating === "optimal");
+  const secondaryAcceptableCount = secondary.filter((f) => f.rating === "acceptable").length;
+
+  // Optimal: ALL critical and primary optimal, max 2 secondary acceptable
+  if (allCriticalOptimal && allPrimaryOptimal && secondaryAcceptableCount <= 2) {
+    return "optimal";
+  }
+
+  // Acceptable: all factors are at least acceptable (no unsuitable, already checked)
+  return "acceptable";
 }
 
 // ============================================================
 // Public API
 // ============================================================
 
-export function getScoreLabel(score: number): ScoreLabel {
-  if (score >= 80) return "Excellent";
-  if (score >= 60) return "Very Good";
-  if (score >= 40) return "Good";
-  if (score >= 20) return "Moderate";
-  return "Low";
+export function suitabilityColor(suitability: Suitability): string {
+  switch (suitability) {
+    case "optimal":
+      return "#15803d"; // dark green
+    case "acceptable":
+      return "#b45309"; // amber gold
+    case "unsuitable":
+      return "#dc2626"; // crimson red
+  }
 }
 
-export function scoreColor(score: number): string {
-  if (score >= 80) return "#16a34a";
-  if (score >= 60) return "#65a30d";
-  if (score >= 40) return "#ca8a04";
-  if (score >= 20) return "#ea580c";
-  return "#dc2626";
+export function suitabilityLabel(suitability: Suitability): string {
+  switch (suitability) {
+    case "optimal":
+      return "Optimal";
+    case "acceptable":
+      return "Suitable";
+    case "unsuitable":
+      return "Unsuitable";
+  }
 }
 
-export function computeDailyScores(weather: WeatherResponse): DailyScore[] {
-  const { hourly, dailyMinTemps, dailyMeanTemps, dailyDates } = weather;
+export function ratingColor(rating: FactorRating): string {
+  switch (rating) {
+    case "optimal":
+      return "#15803d";
+    case "acceptable":
+      return "#b45309";
+    case "unsuitable":
+      return "#dc2626";
+  }
+}
 
+export function computeDailyScores(
+  weather: WeatherResponse,
+  gddData: GDDData,
+  latitude: number,
+): DailyScore[] {
   const today = new Date();
   const todayStr =
     today.getFullYear() +
@@ -380,132 +383,104 @@ export function computeDailyScores(weather: WeatherResponse): DailyScore[] {
     "-" +
     String(today.getDate()).padStart(2, "0");
 
-  const forecastDates = dailyDates.filter((d) => d >= todayStr).slice(0, 5);
+  const forecastDates = weather.dailyDates.filter((d) => d >= todayStr).slice(0, 5);
 
   return forecastDates.map((date) => {
-    // 1. Thermal regime
-    const regime = classifyRegime(date, dailyMeanTemps, dailyDates);
+    const d = new Date(date + "T12:00:00");
+    const dayOfYear = getDayOfYear(d);
+    const daylengthHours = calculateDaylength(latitude, dayOfYear);
+    const daylightMinutes = Math.round(daylengthHours * 60);
 
-    // 2. Dynamic flight window
-    const { tStar, startHour, endHour } = findOptimalFlightWindow(
-      hourly,
-      date,
-    );
-    const windowLabel = `${String(startHour).padStart(2, "0")}:00-${String(endHour).padStart(2, "0")}:00`;
+    // Calculate accumulated GDD up to this date
+    let gdd5ForDate = gddData.accumulatedGDD5;
+    // Adjust for forecast days beyond today
+    const todayIdx = gddData.dailyDates.indexOf(todayStr);
+    const dateIdx = weather.dailyDates.indexOf(date);
+    if (dateIdx >= 0 && todayIdx >= 0) {
+      // Add forecast days' GDD
+      for (let i = 0; i < weather.dailyDates.length; i++) {
+        const wd = weather.dailyDates[i];
+        if (wd > todayStr && wd <= date) {
+          gdd5ForDate += Math.max(0, (weather.dailyMaxTemps[i] + weather.dailyMinTemps[i]) / 2 - 5);
+        }
+      }
+    }
+    gdd5ForDate = Math.round(gdd5ForDate);
 
-    // Average weather in flight window
-    const avg = averageFlightWindow(hourly, date, startHour, endHour);
+    const season = determineSeason(gdd5ForDate);
+    const config = SEASON_CONFIGS[season];
+    const thresholds = config.thresholds;
 
-    // 3. Rain trigger
-    const effectiveRain = computeEffectiveRain(hourly, date, tStar);
-    const currentPrecip = meanPrecipInWindow(hourly, date, startHour, endHour);
-    const rainScore = scoreRainTrigger(effectiveRain, currentPrecip);
+    const flightStart = config.flightWindowStart;
+    const flightEnd = config.flightWindowEnd;
+    const flightWindow = `${String(flightStart).padStart(2, "0")}:00\u2013${String(flightEnd).padStart(2, "0")}:00`;
+    const searchWindow = `${config.searchWindowStart}\u2013${config.searchWindowEnd}`;
 
-    // 5. Humidity * rain interaction
-    const humidityRaw = scoreHumidity(avg.humidity, regime);
-    const humidityScore = humidityRaw * Math.max(rainScore, 0.3);
+    // Get context data
+    const overnightLow = getOvernightLow(weather, date);
+    const prev48h = getPrev48hPrecip(weather.hourly, date, flightStart);
+    const consecDays = getConsecutiveDaysAbove(weather, date, thresholds.consecDays.threshold);
+    const droughtDays = getDroughtDays(weather.hourly, date);
 
-    // 7. Pressure trend
-    const pressure = scorePressureTrend(hourly, date, tStar);
+    // Collect hourly data within the flight window for this date
+    const windowHourly = weather.hourly.filter((w) => {
+      if (w.time.slice(0, 10) !== date) return false;
+      const h = new Date(w.time).getHours();
+      return h >= flightStart && h <= flightEnd;
+    });
 
-    // 8. Soil moisture
-    const soilScore = scoreSoilMoisture(avg.soilMoisture);
+    // Find the best 2-hour contiguous block
+    let bestBlock: BlockResult | null = null;
 
-    // Daily low
-    const dailyIdx = dailyDates.indexOf(date);
-    const dailyMin = dailyIdx >= 0 ? dailyMinTemps[dailyIdx] : null;
+    if (windowHourly.length >= 2) {
+      for (let i = 0; i <= windowHourly.length - 2; i++) {
+        const slice = windowHourly.slice(i, i + 2);
+        const block = evaluateBlock(slice, overnightLow, prev48h, consecDays, droughtDays, thresholds);
 
-    const factors: FactorScore[] = [
-      {
-        name: "Temperature",
-        value: Math.round(avg.temperature * 10) / 10,
-        score: scoreTemperature(avg.temperature, regime),
-        ideal: regime === "spring" ? "13-23" : "22-30",
-        unit: "C",
-      },
-      {
-        name: "Rain Trigger",
-        value: Math.round(effectiveRain * 10) / 10,
-        score: rainScore,
-        ideal: "0.5-3",
-        unit: "mm eff",
-      },
-      {
-        name: "Humidity",
-        value: Math.round(avg.humidity),
-        score: humidityScore,
-        ideal: regime === "spring" ? "50-60" : "70+",
-        unit: "%",
-      },
-      {
-        name: "Wind",
-        value: Math.round(avg.windSpeed * 10) / 10,
-        score: scoreWind(avg.windSpeed),
-        ideal: "0-10",
-        unit: "km/h",
-      },
-      {
-        name: "Prev. Days",
-        value: 0,
-        score: scoreSurroundingDays(
-          hourly,
-          date,
-          regime,
-          dailyMinTemps,
-          dailyDates,
-        ),
-        ideal: regime === "spring" ? "warm 3-5d" : "rain nearby",
-        unit: "",
-      },
-      {
-        name: "Cloud Cover",
-        value: Math.round(avg.cloudCover),
-        score: scoreSunlight(avg.cloudCover),
-        ideal: "30-70",
-        unit: "%",
-      },
-      {
-        name: "Daily Low",
-        value: dailyMin != null ? Math.round(dailyMin * 10) / 10 : -99,
-        score: scoreDailyLow(dailyMin, regime),
-        ideal: regime === "spring" ? "5+" : "n/a",
-        unit: "C",
-      },
-      {
-        name: "Pressure",
-        value: Math.round(pressure.dP6h * 10) / 10,
-        score: pressure.score,
-        ideal: "drop+stable",
-        unit: "hPa/6h",
-      },
-      {
-        name: "Soil Moist.",
-        value: Math.round(avg.soilMoisture * 1000) / 1000,
-        score: soilScore,
-        ideal: "0.15-0.35",
-        unit: "m³/m³",
-      },
-    ];
+        if (
+          !bestBlock ||
+          suitabilityRank(block.suitability) > suitabilityRank(bestBlock.suitability)
+        ) {
+          bestBlock = block;
+        }
+      }
+    } else if (windowHourly.length === 1) {
+      // Only 1 hour available, evaluate it alone
+      bestBlock = evaluateBlock(windowHourly, overnightLow, prev48h, consecDays, droughtDays, thresholds);
+    }
 
-    // 9. Weighted geometric mean (numerical stability via log)
-    // Weights: temp=0.20, rain=0.22, humidity=0.12, wind=0.15,
-    //          prev_days=0.16, cloud=0.08, daily_low=0.07
-    // New factors (pressure, soil) get weight from proportional scaling
-    const weights = [0.17, 0.19, 0.10, 0.13, 0.14, 0.07, 0.06, 0.08, 0.06];
-    const logSum = factors.reduce(
-      (sum, f, i) => sum + weights[i] * Math.log(Math.max(f.score, 1e-6)),
-      0,
-    );
-    const score = Math.round(Math.exp(logSum) * 100);
+    // Fallback if no hourly data
+    if (!bestBlock) {
+      const defaultFactors: FactorResult[] = [
+        { name: "flightTemp", displayName: "Flight Temperature", value: 0, unit: "°C", rating: "unsuitable", category: "primary" },
+        { name: "overnightLow", displayName: "Overnight Low", value: overnightLow, unit: "°C", rating: rateOvernightLow(overnightLow, thresholds), category: "critical" },
+        { name: "humidity", displayName: "Relative Humidity", value: 0, unit: "%", rating: "unsuitable", category: "primary" },
+        { name: "precipitation", displayName: "Precipitation", value: 0, unit: "mm/h", rating: "optimal", category: "critical" },
+        { name: "cloudCover", displayName: "Cloud Cover", value: 0, unit: "%", rating: "unsuitable", category: "secondary" },
+        { name: "windSpeed", displayName: "Wind Speed", value: 0, unit: "km/h", rating: "optimal", category: "critical" },
+        { name: "prev48hPrecip", displayName: "Previous 48h Rainfall", value: prev48h, unit: "mm", rating: ratePrev48hPrecip(prev48h, thresholds, droughtDays), category: "secondary" },
+        { name: "consecDays", displayName: "Consecutive Warm Days", value: consecDays, unit: "days", rating: rateConsecDays(consecDays, thresholds), category: "primary" },
+      ];
+      bestBlock = { factors: defaultFactors, suitability: "unsuitable" };
+    }
 
     return {
       date,
-      score,
-      label: getScoreLabel(score),
-      factors,
-      regime,
-      flightWindow: windowLabel,
-      tStar,
+      suitability: bestBlock.suitability,
+      season,
+      flightWindow,
+      searchWindow,
+      factors: bestBlock.factors,
+      daylightMinutes,
+      accumulatedGDD5: gdd5ForDate,
     };
   });
+}
+
+function suitabilityRank(s: Suitability): number {
+  switch (s) {
+    case "optimal": return 2;
+    case "acceptable": return 1;
+    case "unsuitable": return 0;
+  }
 }

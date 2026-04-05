@@ -1,14 +1,15 @@
 import { useState, useEffect, useCallback } from "react";
 import type { Location, DailyScore } from "./types";
-import { fetchWeather } from "./lib/weather";
+import { fetchWeather, fetchGDDData } from "./lib/weather";
 import { computeDailyScores } from "./lib/scoring";
 import { getCurrentPosition, reverseGeocode } from "./lib/location";
 import Header from "./components/Header";
 import LocationPicker from "./components/LocationPicker";
-import ScoreCard from "./components/ScoreCard";
-import DailyForecast from "./components/DailyForecast";
-import WeatherDetails from "./components/WeatherDetails";
-import AlertSettings from "./components/AlertSettings";
+import SeasonIndicator from "./components/SeasonIndicator";
+import ForecastCards from "./components/ForecastCards";
+import MetricsGrid from "./components/MetricsGrid";
+import SearchTerrain from "./components/SearchTerrain";
+import SpeciesList from "./components/SpeciesList";
 
 function App() {
   const [location, setLocation] = useState<Location | null>(null);
@@ -21,8 +22,11 @@ function App() {
     setLoading(true);
     setError(null);
     try {
-      const weather = await fetchWeather(loc.latitude, loc.longitude);
-      const scored = computeDailyScores(weather);
+      const [weather, gddData] = await Promise.all([
+        fetchWeather(loc.latitude, loc.longitude),
+        fetchGDDData(loc.latitude, loc.longitude),
+      ]);
+      const scored = computeDailyScores(weather, gddData, loc.latitude);
       setScores(scored);
       setSelectedDay(0);
     } catch (e) {
@@ -83,22 +87,32 @@ function App() {
           </div>
         )}
 
-        {scores.length > 0 && (
-          <DailyForecast
-            scores={scores}
-            selectedDay={selectedDay}
-            onSelectDay={setSelectedDay}
-          />
-        )}
-
         {currentScore && (
           <>
-            <ScoreCard score={currentScore} />
-            <WeatherDetails score={currentScore} />
+            <SeasonIndicator
+              season={currentScore.season}
+              accumulatedGDD5={currentScore.accumulatedGDD5}
+              daylightMinutes={currentScore.daylightMinutes}
+              flightWindow={currentScore.flightWindow}
+              searchWindow={currentScore.searchWindow}
+            />
+
+            <ForecastCards
+              scores={scores}
+              selectedDay={selectedDay}
+              onSelectDay={setSelectedDay}
+            />
+
+            <MetricsGrid
+              factors={currentScore.factors}
+              flightWindow={currentScore.flightWindow}
+            />
+
+            <SearchTerrain season={currentScore.season} />
+
+            <SpeciesList season={currentScore.season} />
           </>
         )}
-
-        {location && <AlertSettings location={location} />}
       </main>
     </div>
   );
