@@ -1,10 +1,47 @@
 import { useState } from "react";
 import type { Season } from "../types";
+import type { SpeciesInfo } from "../types";
 import { SEASON_CONFIGS } from "../lib/seasons";
 import { getSpeciesForSeason } from "../lib/species";
 
 interface Props {
   season: Season;
+}
+
+function SpeciesPhoto({ species }: { species: SpeciesInfo }) {
+  const [error, setError] = useState(false);
+
+  if (error || !species.photoUrl) {
+    return (
+      <a
+        href={species.antWikiUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block w-full h-32 bg-stone-100 dark:bg-stone-700 rounded-lg flex items-center justify-center text-stone-400 hover:text-amber-600 transition-colors"
+      >
+        <span className="text-center text-xs">
+          <span className="block text-2xl mb-1">🐜</span>
+          View on AntWiki
+        </span>
+      </a>
+    );
+  }
+
+  return (
+    <a
+      href={species.antWikiUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="block"
+    >
+      <img
+        src={species.photoUrl}
+        alt={`${species.scientificName} queen`}
+        className="w-full h-32 object-cover rounded-lg bg-stone-100 dark:bg-stone-700"
+        onError={() => setError(true)}
+      />
+    </a>
+  );
 }
 
 export default function SpeciesList({ season }: Props) {
@@ -44,6 +81,10 @@ export default function SpeciesList({ season }: Props) {
                     <p className="text-sm font-medium mb-2">{sp.commonName}</p>
                   )}
 
+                  <div className="mb-3">
+                    <SpeciesPhoto species={sp} />
+                  </div>
+
                   <div className="space-y-1.5 text-xs text-stone-600 dark:text-stone-400">
                     {sp.queenSize && (
                       <div className="flex gap-2">
@@ -77,7 +118,7 @@ export default function SpeciesList({ season }: Props) {
                     rel="noopener noreferrer"
                     className="mt-2 inline-block text-xs text-amber-600 dark:text-amber-400 hover:underline"
                   >
-                    View on AntWiki →
+                    View full profile on AntWiki →
                   </a>
                 </div>
               )}

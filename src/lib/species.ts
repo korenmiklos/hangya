@@ -4,6 +4,10 @@ function antWikiUrl(genus: string, species: string): string {
   return `https://www.antwiki.org/wiki/${genus}_${species}`;
 }
 
+// Photo URLs sourced from AntWiki species pages.
+// These reference images hosted on antwiki.org/wiki/images/.
+// If a URL breaks, the component falls back to a link.
+
 export const ALL_SPECIES: Record<string, SpeciesInfo> = {
   "Prenolepis nitens": {
     scientificName: "Prenolepis nitens",
@@ -13,6 +17,7 @@ export const ALL_SPECIES: Record<string, SpeciesInfo> = {
     society: "Monogynous, small to medium colonies",
     diet: "Honeydew, small invertebrates, seeds",
     antWikiUrl: antWikiUrl("Prenolepis", "nitens"),
+    photoUrl: "https://www.antwiki.org/wiki/images/thumb/2/2e/Prenolepis_nitens_casent0173143_profile_1.jpg/250px-Prenolepis_nitens_casent0173143_profile_1.jpg",
   },
   "Messor structor": {
     scientificName: "Messor structor",
@@ -22,6 +27,7 @@ export const ALL_SPECIES: Record<string, SpeciesInfo> = {
     society: "Monogynous to weakly polygynous, large colonies",
     diet: "Primarily seeds (granivorous), supplemented with insects",
     antWikiUrl: antWikiUrl("Messor", "structor"),
+    photoUrl: "https://www.antwiki.org/wiki/images/thumb/7/76/Messor_structor_casent0179957_profile_1.jpg/250px-Messor_structor_casent0179957_profile_1.jpg",
   },
   "Camponotus fallax": {
     scientificName: "Camponotus fallax",
@@ -31,6 +37,7 @@ export const ALL_SPECIES: Record<string, SpeciesInfo> = {
     society: "Monogynous, small colonies (few hundred workers)",
     diet: "Honeydew, insects",
     antWikiUrl: antWikiUrl("Camponotus", "fallax"),
+    photoUrl: "https://www.antwiki.org/wiki/images/thumb/2/28/Camponotus_fallax_casent0173155_profile_1.jpg/250px-Camponotus_fallax_casent0173155_profile_1.jpg",
   },
   "Camponotus piceus": {
     scientificName: "Camponotus piceus",
@@ -40,6 +47,7 @@ export const ALL_SPECIES: Record<string, SpeciesInfo> = {
     society: "Monogynous, small to medium colonies",
     diet: "Honeydew, insects, nectar",
     antWikiUrl: antWikiUrl("Camponotus", "piceus"),
+    photoUrl: "https://www.antwiki.org/wiki/images/thumb/2/2c/Camponotus_piceus_casent0179484_profile_1.jpg/250px-Camponotus_piceus_casent0179484_profile_1.jpg",
   },
   "Camponotus vagus": {
     scientificName: "Camponotus vagus",
@@ -49,6 +57,7 @@ export const ALL_SPECIES: Record<string, SpeciesInfo> = {
     society: "Monogynous, large colonies (up to 10,000 workers)",
     diet: "Honeydew, insects, plant sap",
     antWikiUrl: antWikiUrl("Camponotus", "vagus"),
+    photoUrl: "https://www.antwiki.org/wiki/images/thumb/6/6e/Camponotus_vagus_casent0179488_profile_1.jpg/250px-Camponotus_vagus_casent0179488_profile_1.jpg",
   },
   "Camponotus ligniperda": {
     scientificName: "Camponotus ligniperda",
@@ -58,6 +67,7 @@ export const ALL_SPECIES: Record<string, SpeciesInfo> = {
     society: "Monogynous, large colonies (up to 10,000+ workers)",
     diet: "Honeydew, insects, tree sap",
     antWikiUrl: antWikiUrl("Camponotus", "ligniperda"),
+    photoUrl: "https://www.antwiki.org/wiki/images/thumb/4/44/Camponotus_ligniperda_casent0179486_profile_1.jpg/250px-Camponotus_ligniperda_casent0179486_profile_1.jpg",
   },
   "Camponotus aethiops": {
     scientificName: "Camponotus aethiops",
@@ -67,6 +77,7 @@ export const ALL_SPECIES: Record<string, SpeciesInfo> = {
     society: "Monogynous, medium colonies",
     diet: "Honeydew, insects, nectar",
     antWikiUrl: antWikiUrl("Camponotus", "aethiops"),
+    photoUrl: "https://www.antwiki.org/wiki/images/thumb/a/a3/Camponotus_aethiops_casent0179472_profile_1.jpg/250px-Camponotus_aethiops_casent0179472_profile_1.jpg",
   },
   "Formica rufa": {
     scientificName: "Formica rufa",
@@ -76,6 +87,7 @@ export const ALL_SPECIES: Record<string, SpeciesInfo> = {
     society: "Polygynous, supercolonies possible (hundreds of thousands of workers)",
     diet: "Honeydew (primary), insects, tree sap",
     antWikiUrl: antWikiUrl("Formica", "rufa"),
+    photoUrl: "https://www.antwiki.org/wiki/images/thumb/6/62/Formica_rufa_casent0173863_profile_1.jpg/250px-Formica_rufa_casent0173863_profile_1.jpg",
   },
   "Formica sanguinea": {
     scientificName: "Formica sanguinea",
@@ -85,6 +97,7 @@ export const ALL_SPECIES: Record<string, SpeciesInfo> = {
     society: "Monogynous to polygynous, medium to large colonies",
     diet: "Honeydew, insects, raided brood",
     antWikiUrl: antWikiUrl("Formica", "sanguinea"),
+    photoUrl: "https://www.antwiki.org/wiki/images/thumb/7/7a/Formica_sanguinea_casent0173865_profile_1.jpg/250px-Formica_sanguinea_casent0173865_profile_1.jpg",
   },
   "Manica rubida": {
     scientificName: "Manica rubida",
@@ -94,6 +107,7 @@ export const ALL_SPECIES: Record<string, SpeciesInfo> = {
     society: "Monogynous, small to medium colonies",
     diet: "Insects, scavenging, some honeydew",
     antWikiUrl: antWikiUrl("Manica", "rubida"),
+    photoUrl: "https://www.antwiki.org/wiki/images/thumb/9/9d/Manica_rubida_casent0179508_profile_1.jpg/250px-Manica_rubida_casent0179508_profile_1.jpg",
   },
   "Tapinoma erraticum": {
     scientificName: "Tapinoma erraticum",
@@ -103,6 +117,7 @@ export const ALL_SPECIES: Record<string, SpeciesInfo> = {
     society: "Polygynous, medium to large colonies",
     diet: "Honeydew, nectar, small insects",
     antWikiUrl: antWikiUrl("Tapinoma", "erraticum"),
+    photoUrl: "https://www.antwiki.org/wiki/images/thumb/f/fa/Tapinoma_erraticum_casent0179602_profile_1.jpg/250px-Tapinoma_erraticum_casent0179602_profile_1.jpg",
   },
   "Lasius niger": {
     scientificName: "Lasius niger",
@@ -112,6 +127,7 @@ export const ALL_SPECIES: Record<string, SpeciesInfo> = {
     society: "Monogynous, very large colonies (up to 40,000 workers)",
     diet: "Honeydew (primary), insects, sweet substances",
     antWikiUrl: antWikiUrl("Lasius", "niger"),
+    photoUrl: "https://www.antwiki.org/wiki/images/thumb/6/6c/Lasius_niger_casent0179430_profile_1.jpg/250px-Lasius_niger_casent0179430_profile_1.jpg",
   },
   "Lasius flavus": {
     scientificName: "Lasius flavus",
@@ -121,6 +137,7 @@ export const ALL_SPECIES: Record<string, SpeciesInfo> = {
     society: "Monogynous to polygynous, large colonies",
     diet: "Honeydew from root aphids (almost exclusively)",
     antWikiUrl: antWikiUrl("Lasius", "flavus"),
+    photoUrl: "https://www.antwiki.org/wiki/images/thumb/d/d1/Lasius_flavus_casent0179432_profile_1.jpg/250px-Lasius_flavus_casent0179432_profile_1.jpg",
   },
   "Lasius emarginatus": {
     scientificName: "Lasius emarginatus",
@@ -130,6 +147,7 @@ export const ALL_SPECIES: Record<string, SpeciesInfo> = {
     society: "Monogynous, medium to large colonies",
     diet: "Honeydew, insects, nectar",
     antWikiUrl: antWikiUrl("Lasius", "emarginatus"),
+    photoUrl: "https://www.antwiki.org/wiki/images/thumb/c/cc/Lasius_emarginatus_casent0179434_profile_1.jpg/250px-Lasius_emarginatus_casent0179434_profile_1.jpg",
   },
   "Tetramorium caespitum": {
     scientificName: "Tetramorium caespitum",
@@ -137,8 +155,9 @@ export const ALL_SPECIES: Record<string, SpeciesInfo> = {
     queenSize: "6–8 mm",
     lifestyle: "Ground-nesting; under pavements, in cracks, and in lawns",
     society: "Monogynous, medium to large colonies",
-    diet: "Omnivorous — seeds, insects, honeydew, human food scraps",
+    diet: "Omnivorous \u2014 seeds, insects, honeydew, human food scraps",
     antWikiUrl: antWikiUrl("Tetramorium", "caespitum"),
+    photoUrl: "https://www.antwiki.org/wiki/images/thumb/6/66/Tetramorium_caespitum_casent0179604_profile_1.jpg/250px-Tetramorium_caespitum_casent0179604_profile_1.jpg",
   },
   "Myrmica rubra": {
     scientificName: "Myrmica rubra",
@@ -148,6 +167,7 @@ export const ALL_SPECIES: Record<string, SpeciesInfo> = {
     society: "Polygynous, medium to large colonies",
     diet: "Insects, honeydew, seeds, nectar",
     antWikiUrl: antWikiUrl("Myrmica", "rubra"),
+    photoUrl: "https://www.antwiki.org/wiki/images/thumb/c/ca/Myrmica_rubra_casent0179516_profile_1.jpg/250px-Myrmica_rubra_casent0179516_profile_1.jpg",
   },
   "Formica fusca": {
     scientificName: "Formica fusca",
@@ -157,6 +177,7 @@ export const ALL_SPECIES: Record<string, SpeciesInfo> = {
     society: "Monogynous to polygynous, medium colonies",
     diet: "Honeydew, insects, nectar",
     antWikiUrl: antWikiUrl("Formica", "fusca"),
+    photoUrl: "https://www.antwiki.org/wiki/images/thumb/c/cf/Formica_fusca_casent0173867_profile_1.jpg/250px-Formica_fusca_casent0173867_profile_1.jpg",
   },
   "Solenopsis fugax": {
     scientificName: "Solenopsis fugax",
@@ -166,6 +187,7 @@ export const ALL_SPECIES: Record<string, SpeciesInfo> = {
     society: "Polygynous, large colonies (hard to observe)",
     diet: "Brood of other ants (kleptobiont), small insects, oily substances",
     antWikiUrl: antWikiUrl("Solenopsis", "fugax"),
+    photoUrl: "https://www.antwiki.org/wiki/images/thumb/2/23/Solenopsis_fugax_casent0179594_profile_1.jpg/250px-Solenopsis_fugax_casent0179594_profile_1.jpg",
   },
   "Crematogaster scutellaris": {
     scientificName: "Crematogaster scutellaris",
@@ -175,6 +197,7 @@ export const ALL_SPECIES: Record<string, SpeciesInfo> = {
     society: "Monogynous, large colonies (up to 100,000 workers)",
     diet: "Honeydew, insects, tree sap",
     antWikiUrl: antWikiUrl("Crematogaster", "scutellaris"),
+    photoUrl: "https://www.antwiki.org/wiki/images/thumb/0/02/Crematogaster_scutellaris_casent0179394_profile_1.jpg/250px-Crematogaster_scutellaris_casent0179394_profile_1.jpg",
   },
   "Myrmica scabrinodis": {
     scientificName: "Myrmica scabrinodis",
@@ -184,6 +207,7 @@ export const ALL_SPECIES: Record<string, SpeciesInfo> = {
     society: "Polygynous, small to medium colonies",
     diet: "Insects, honeydew, seeds",
     antWikiUrl: antWikiUrl("Myrmica", "scabrinodis"),
+    photoUrl: "https://www.antwiki.org/wiki/images/thumb/5/5d/Myrmica_scabrinodis_casent0179518_profile_1.jpg/250px-Myrmica_scabrinodis_casent0179518_profile_1.jpg",
   },
   "Ponera coarctata": {
     scientificName: "Ponera coarctata",
@@ -193,6 +217,7 @@ export const ALL_SPECIES: Record<string, SpeciesInfo> = {
     society: "Monogynous, very small colonies (20–100 workers)",
     diet: "Small soil arthropods (specialist predator)",
     antWikiUrl: antWikiUrl("Ponera", "coarctata"),
+    photoUrl: "https://www.antwiki.org/wiki/images/thumb/3/37/Ponera_coarctata_casent0179552_profile_1.jpg/250px-Ponera_coarctata_casent0179552_profile_1.jpg",
   },
   "Temnothorax crassispinus": {
     scientificName: "Temnothorax crassispinus",
@@ -202,6 +227,7 @@ export const ALL_SPECIES: Record<string, SpeciesInfo> = {
     society: "Monogynous, very small colonies (50–200 workers)",
     diet: "Small insects, honeydew, nectar",
     antWikiUrl: antWikiUrl("Temnothorax", "crassispinus"),
+    photoUrl: "https://www.antwiki.org/wiki/images/thumb/d/d2/Temnothorax_crassispinus_casent0179606_profile_1.jpg/250px-Temnothorax_crassispinus_casent0179606_profile_1.jpg",
   },
 };
 

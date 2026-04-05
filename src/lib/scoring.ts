@@ -24,15 +24,18 @@ function rateFlightTemp(
   t: SeasonThresholds,
   cloudCover: number,
 ): FactorRating {
-  if (temp >= t.flightTemp.optimalMin && temp <= t.flightTemp.optimalMax) {
-    return "optimal";
-  }
+  const inOptimal = t.flightTemp.optimalMaxInclusive
+    ? (temp >= t.flightTemp.optimalMin && temp <= t.flightTemp.optimalMax)
+    : (temp >= t.flightTemp.optimalMin && temp < t.flightTemp.optimalMax);
+
+  if (inOptimal) return "optimal";
+
   if (temp >= t.flightTemp.acceptableMin && temp <= t.flightTemp.acceptableMax) {
     // Some seasons require low clouds for acceptable low temps
     if (
       t.flightTemp.acceptableRequiresLowClouds !== undefined &&
       temp < t.flightTemp.optimalMin &&
-      cloudCover > t.flightTemp.acceptableRequiresLowClouds
+      cloudCover >= t.flightTemp.acceptableRequiresLowClouds
     ) {
       return "unsuitable";
     }
@@ -42,12 +45,8 @@ function rateFlightTemp(
 }
 
 function rateOvernightLow(low: number, t: SeasonThresholds): FactorRating {
-  if (low >= t.overnightLow.optimalMin && low <= t.overnightLow.optimalMax) {
-    return "optimal";
-  }
-  if (low >= t.overnightLow.acceptableMin && low <= t.overnightLow.acceptableMax) {
-    return "acceptable";
-  }
+  if (low >= t.overnightLow.optimalMin) return "optimal";
+  if (low >= t.overnightLow.acceptableMin) return "acceptable";
   return "unsuitable";
 }
 

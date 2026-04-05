@@ -53,7 +53,8 @@ export interface TownSuggestion {
 let searchTimeout: ReturnType<typeof setTimeout> | null = null;
 
 /**
- * Search for towns/cities by name using Nominatim.
+ * Search for Hungarian settlements using Nominatim with country filter.
+ * Covers cities, towns, and villages across Hungary.
  * Debounced to avoid excessive API calls.
  */
 export function searchTown(
@@ -72,8 +73,10 @@ export function searchTown(
       const params = new URLSearchParams({
         q: query,
         format: "json",
-        limit: "5",
+        limit: "8",
         addressdetails: "1",
+        countrycodes: "hu",
+        "accept-language": "hu",
       });
       const res = await fetch(
         `https://nominatim.openstreetmap.org/search?${params}`,
@@ -84,17 +87,28 @@ export function searchTown(
           display_name: string;
           lat: string;
           lon: string;
-          address?: { city?: string; town?: string; village?: string; country?: string };
-        }) => ({
-          name:
+          address?: {
+            city?: string;
+            town?: string;
+            village?: string;
+            municipality?: string;
+            county?: string;
+          };
+        }) => {
+          const name =
             item.address?.city ||
             item.address?.town ||
             item.address?.village ||
-            item.display_name.split(",")[0],
-          displayName: item.display_name,
-          latitude: parseFloat(item.lat),
-          longitude: parseFloat(item.lon),
-        }),
+            item.address?.municipality ||
+            item.display_name.split(",")[0];
+          const county = item.address?.county || "";
+          return {
+            name,
+            displayName: county ? `${name}, ${county}` : item.display_name,
+            latitude: parseFloat(item.lat),
+            longitude: parseFloat(item.lon),
+          };
+        },
       );
       callback(results);
     } catch {

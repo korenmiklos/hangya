@@ -89,7 +89,7 @@ export default function LocationPicker({
       <div className="relative" ref={wrapperRef}>
         <input
           type="text"
-          placeholder="Search for a town or city..."
+          placeholder="Település keresése..."
           value={query}
           onChange={(e) => handleSearchChange(e.target.value)}
           onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}

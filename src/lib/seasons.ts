@@ -89,45 +89,49 @@ export function isDaylengthRising(latitude: number, dayOfYear: number): boolean 
 // Season configuration tables
 // ============================================================
 
+// Early Spring: Optimal temp < 19 (exclusive), overnight low >= 6 (no cap)
 const earlySpringThresholds: SeasonThresholds = {
-  flightTemp: { optimalMin: 14, optimalMax: 18, acceptableMin: 11, acceptableMax: 22, acceptableRequiresLowClouds: 10 },
-  overnightLow: { optimalMin: 6, optimalMax: 10, acceptableMin: 2, acceptableMax: 5 },
+  flightTemp: { optimalMin: 14, optimalMax: 19, optimalMaxInclusive: false, acceptableMin: 11, acceptableMax: 22, acceptableRequiresLowClouds: 10 },
+  overnightLow: { optimalMin: 6, acceptableMin: 2 },
   humidity: { optimalMin: 45, optimalMax: 60, acceptableMin: 40, acceptableMax: 70 },
   precipitation: { optimalMax: 0, acceptableMax: 0 },
-  cloudCover: { optimalMin: 0, optimalMax: 10, acceptableMin: 11, acceptableMax: 30 },
+  cloudCover: { optimalMin: 0, optimalMax: 10, acceptableMin: 0, acceptableMax: 30 },
   windSpeed: { optimalMax: 5, acceptableMax: 15 },
-  prev48hPrecip: { optimalMin: 0, optimalMax: 5, acceptableMin: 6, acceptableMax: 10 },
+  prev48hPrecip: { optimalMin: 0, optimalMax: 5, acceptableMin: 0, acceptableMax: 10 },
   consecDays: { threshold: 12, optimalDays: 2, acceptableDays: 1 },
 };
 
+// Late Spring: Optimal temp < 26 (exclusive), wind 0-5, cloud optimal 0-40, consec >=16°C
 const lateSpringThresholds: SeasonThresholds = {
-  flightTemp: { optimalMin: 20, optimalMax: 25, acceptableMin: 16, acceptableMax: 28, acceptableRequiresLowClouds: 20 },
-  overnightLow: { optimalMin: 10, optimalMax: 15, acceptableMin: 7, acceptableMax: 9 },
+  flightTemp: { optimalMin: 20, optimalMax: 26, optimalMaxInclusive: false, acceptableMin: 16, acceptableMax: 28, acceptableRequiresLowClouds: 20 },
+  overnightLow: { optimalMin: 10, acceptableMin: 7 },
   humidity: { optimalMin: 50, optimalMax: 65, acceptableMin: 45, acceptableMax: 75 },
   precipitation: { optimalMax: 0, acceptableMax: 0 },
-  cloudCover: { optimalMin: 10, optimalMax: 40, acceptableMin: 41, acceptableMax: 60, vetoTempThreshold: 19 },
-  windSpeed: { optimalMax: 6, acceptableMax: 15 },
+  cloudCover: { optimalMin: 0, optimalMax: 40, acceptableMin: 0, acceptableMax: 60, vetoTempThreshold: 19 },
+  windSpeed: { optimalMax: 5, acceptableMax: 15 },
   prev48hPrecip: { optimalMin: 5, optimalMax: 15, acceptableMin: 0, acceptableMax: 20 },
-  consecDays: { threshold: 18, optimalDays: 3, acceptableDays: 1 },
+  consecDays: { threshold: 16, optimalDays: 3, acceptableDays: 1 },
 };
 
+// Peak Summer: Optimal temp <= 30 (inclusive), consec >=24°C, prev48h acc includes >25mm
 const peakSummerThresholds: SeasonThresholds = {
-  flightTemp: { optimalMin: 26, optimalMax: 30, acceptableMin: 24, acceptableMax: 33 },
-  overnightLow: { optimalMin: 16, optimalMax: 21, acceptableMin: 14, acceptableMax: 15 },
+  flightTemp: { optimalMin: 26, optimalMax: 30, optimalMaxInclusive: true, acceptableMin: 24, acceptableMax: 33 },
+  overnightLow: { optimalMin: 16, acceptableMin: 14 },
   humidity: { optimalMin: 55, optimalMax: 75, acceptableMin: 45, acceptableMax: 85 },
   precipitation: { optimalMax: 0, acceptableMax: 0.1 },
   cloudCover: { optimalMin: 30, optimalMax: 70, acceptableMin: 0, acceptableMax: 100 },
   windSpeed: { optimalMax: 5, acceptableMax: 15 },
   prev48hPrecip: { optimalMin: 10, optimalMax: 25, acceptableMin: 0, acceptableMax: 100, droughtVetoDays: 14 },
-  consecDays: { threshold: 25, optimalDays: 4, acceptableDays: 2 },
+  consecDays: { threshold: 24, optimalDays: 4, acceptableDays: 2 },
 };
 
+// Late Summer: Optimal temp <= 24 (inclusive), humidity acc includes >80%
 const lateSummerThresholds: SeasonThresholds = {
-  flightTemp: { optimalMin: 20, optimalMax: 24, acceptableMin: 17, acceptableMax: 27 },
-  overnightLow: { optimalMin: 10, optimalMax: 14, acceptableMin: 6, acceptableMax: 9 },
+  flightTemp: { optimalMin: 20, optimalMax: 24, optimalMaxInclusive: true, acceptableMin: 17, acceptableMax: 27 },
+  overnightLow: { optimalMin: 10, acceptableMin: 6 },
   humidity: { optimalMin: 60, optimalMax: 80, acceptableMin: 50, acceptableMax: 100 },
   precipitation: { optimalMax: 0, acceptableMax: 0 },
-  cloudCover: { optimalMin: 0, optimalMax: 30, acceptableMin: 31, acceptableMax: 60 },
+  cloudCover: { optimalMin: 0, optimalMax: 30, acceptableMin: 0, acceptableMax: 60 },
   windSpeed: { optimalMax: 5, acceptableMax: 15 },
   prev48hPrecip: { optimalMin: 5, optimalMax: 15, acceptableMin: 0, acceptableMax: 20 },
   consecDays: { threshold: 18, optimalDays: 2, acceptableDays: 1 },

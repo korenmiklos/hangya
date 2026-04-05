@@ -70,8 +70,18 @@ export interface SeasonConfig {
 }
 
 export interface SeasonThresholds {
-  flightTemp: { optimalMin: number; optimalMax: number; acceptableMin: number; acceptableMax: number; acceptableRequiresLowClouds?: number };
-  overnightLow: { optimalMin: number; optimalMax: number; acceptableMin: number; acceptableMax: number };
+  flightTemp: {
+    optimalMin: number;
+    optimalMax: number;
+    optimalMaxInclusive: boolean;
+    acceptableMin: number;
+    acceptableMax: number;
+    acceptableRequiresLowClouds?: number;
+  };
+  overnightLow: {
+    optimalMin: number;
+    acceptableMin: number;
+  };
   humidity: { optimalMin: number; optimalMax: number; acceptableMin: number; acceptableMax: number };
   precipitation: { optimalMax: number; acceptableMax: number };
   cloudCover: { optimalMin: number; optimalMax: number; acceptableMin: number; acceptableMax: number; vetoTempThreshold?: number };
